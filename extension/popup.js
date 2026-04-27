@@ -20,5 +20,4 @@ function updateStatus() {
   });
 }
 
-// Load initial status
 updateStatus();
