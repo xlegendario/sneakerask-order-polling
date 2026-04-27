@@ -4,6 +4,8 @@ const BASE = process.env.AIRTABLE_BASE_ID;
 const TABLE = encodeURIComponent(process.env.AIRTABLE_TABLE);
 const API_KEY = process.env.AIRTABLE_API_KEY;
 
+const COOLDOWN_MINUTES = 10;
+
 const api = axios.create({
   baseURL: `https://api.airtable.com/v0/${BASE}/${TABLE}`,
   headers: {
@@ -12,26 +14,48 @@ const api = axios.create({
   }
 });
 
-// Get one Outsource order
 async function getNextOrder() {
   const res = await api.get("", {
     params: {
       view: "All Orders (Open Only SneakerAsk)",
       filterByFormula: `AND(
         {Fulfillment Status} = "Outsource",
-        FIND("SneakerAsk", ARRAYJOIN({Store Name})) > 0,
-        OR(
-          {LastSneakeraskPoll} = BLANK(),
-          DATETIME_DIFF(NOW(), {LastSneakeraskPoll}, 'minutes') > 10
-        )
+        FIND("SneakerAsk", ARRAYJOIN({Store Name})) > 0
       )`,
-      maxRecords: 1
+      maxRecords: 50
     }
   });
 
-  if (!res.data.records.length) return null;
+  const records = res.data.records || [];
 
-  const r = res.data.records[0];
+  const now = Date.now();
+
+  for (const r of records) {
+    const lastPoll = r.fields["LastSneakeraskPoll"];
+
+    if (!lastPoll) {
+      return formatJob(r);
+    }
+
+    const lastPollTime = new Date(lastPoll).getTime();
+    const minutesAgo = (now - lastPollTime) / 1000 / 60;
+
+    if (minutesAgo >= COOLDOWN_MINUTES) {
+      return formatJob(r);
+    }
+  }
+
+  return null;
+}
+
+function formatJob(r) {
+  console.log("📦 Eligible record:", {
+    id: r.id,
+    orderNumber: r.fields["Shopify Order Number"],
+    sku: r.fields["SKU"],
+    size: r.fields["Size"],
+    lastPoll: r.fields["LastSneakeraskPoll"]
+  });
 
   return {
     id: r.id,
@@ -41,7 +65,6 @@ async function getNextOrder() {
   };
 }
 
-// Update to Store Fulfilled
 async function markStoreFulfilled(id) {
   await api.patch(`/${id}`, {
     fields: {
