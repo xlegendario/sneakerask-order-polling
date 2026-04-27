@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "SneakerAsk Order Checker",
-  "version": "1.2",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "version": "1.3",
+  "permissions": ["activeTab", "scripting", "storage", "alarms"],
   "host_permissions": [
     "https://sell.sneakerask.com/*",
     "https://sneakerask-order-polling.onrender.com/*"
