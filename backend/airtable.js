@@ -27,7 +27,6 @@ async function getNextOrder() {
   });
 
   const records = res.data.records || [];
-
   const now = Date.now();
 
   for (const r of records) {
@@ -39,6 +38,10 @@ async function getNextOrder() {
 
     const lastPollTime = new Date(lastPoll).getTime();
     const minutesAgo = (now - lastPollTime) / 1000 / 60;
+
+    console.log(
+      `⏱️ ${r.fields["Shopify Order Number"]} last polled ${minutesAgo.toFixed(1)} min ago`
+    );
 
     if (minutesAgo >= COOLDOWN_MINUTES) {
       return formatJob(r);
