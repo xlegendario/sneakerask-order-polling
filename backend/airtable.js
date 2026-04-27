@@ -16,7 +16,11 @@ const api = axios.create({
 async function getNextOrder() {
   const res = await api.get("", {
     params: {
-      filterByFormula: `{Fulfillment Status} = "Outsource"`,
+      view: "All Orders (Open Only SneakerAsk)",
+      filterByFormula: `AND(
+        {Fulfillment Status} = "Outsource",
+        FIND("SneakerAsk", ARRAYJOIN({Store Name})) > 0
+      )`,
       maxRecords: 1
     }
   });
