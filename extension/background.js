@@ -12,7 +12,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "STOP") {
     running = false;
-    console.log("🛑 Polling stopped");
+    console.log("🛑 Stopped");
   }
 
   if (msg.type === "STATUS") {
@@ -21,10 +21,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 async function loop() {
-  console.log("🚀 Polling started");
+  console.log("🚀 STARTED");
 
   while (running) {
     try {
+      console.log("🔄 Polling backend...");
+
       const res = await fetch(`${API}/next`);
       const job = await res.json();
 
@@ -33,6 +35,8 @@ async function loop() {
         await sleep(5000);
         continue;
       }
+
+      console.log("📦 Job:", job);
 
       const tabs = await chrome.tabs.query({
         url: "https://sell.sneakerask.com/products*"
@@ -46,10 +50,20 @@ async function loop() {
 
       const tab = tabs[0];
 
+      // 🔥 FORCE inject content script
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"]
+      });
+
+      await sleep(300);
+
       const found = await chrome.tabs.sendMessage(tab.id, {
         type: "CHECK_ORDER",
         job
       });
+
+      console.log("📤 Result:", found);
 
       await fetch(`${API}/result`, {
         method: "POST",
@@ -63,13 +77,13 @@ async function loop() {
       });
 
     } catch (err) {
-      console.error("Loop error:", err);
+      console.error("❌ ERROR:", err);
     }
 
     await sleep(2000);
   }
 
-  console.log("🛑 Loop exited");
+  console.log("🛑 LOOP STOPPED");
 }
 
 function sleep(ms) {
