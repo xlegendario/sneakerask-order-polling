@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "SneakerAsk Order Checker",
+  "version": "1.0",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": [
+    "https://sell.sneakerask.com/*",
+    "https://YOUR-RENDER-URL.onrender.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://sell.sneakerask.com/products*"],
+      "js": ["content.js"]
+    }
+  ]
+}
