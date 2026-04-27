@@ -1,91 +1,113 @@
 const API = "https://sneakerask-order-polling.onrender.com";
+const ALARM_NAME = "sneakerask_poll_alarm";
 
-let running = false;
+chrome.runtime.onInstalled.addListener(async () => {
+  await chrome.storage.local.set({ running: false });
+});
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "START") {
-    if (!running) {
-      running = true;
-      loop();
-    }
+    startPolling().then(() => sendResponse({ ok: true }));
+    return true;
   }
 
   if (msg.type === "STOP") {
-    running = false;
-    console.log("🛑 Stopped");
+    stopPolling().then(() => sendResponse({ ok: true }));
+    return true;
   }
 
   if (msg.type === "STATUS") {
-    sendResponse({ running });
+    chrome.storage.local.get(["running"], (data) => {
+      sendResponse({ running: !!data.running });
+    });
+    return true;
   }
 });
 
-async function loop() {
-  console.log("🚀 STARTED");
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name !== ALARM_NAME) return;
 
-  while (running) {
-    try {
-      console.log("🔄 Polling backend...");
+  const data = await chrome.storage.local.get(["running"]);
+  if (!data.running) return;
 
-      const res = await fetch(`${API}/next`);
-      const job = await res.json();
+  await processOneJob();
+});
 
-      if (!job) {
-        console.log("⏳ No jobs");
-        await sleep(5000);
-        continue;
-      }
+async function startPolling() {
+  console.log("🚀 Polling started");
 
-      console.log("📦 Job:", job);
+  await chrome.storage.local.set({ running: true });
 
-      const tabs = await chrome.tabs.query({
-        url: "https://sell.sneakerask.com/products*"
-      });
+  chrome.alarms.create(ALARM_NAME, {
+    periodInMinutes: 1
+  });
 
-      if (!tabs.length) {
-        console.log("❌ SneakerAsk tab not open");
-        await sleep(3000);
-        continue;
-      }
+  // Run immediately once
+  await processOneJob();
+}
 
-      const tab = tabs[0];
+async function stopPolling() {
+  console.log("🛑 Polling stopped");
 
-      // 🔥 FORCE inject content script
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ["content.js"]
-      });
+  await chrome.storage.local.set({ running: false });
+  await chrome.alarms.clear(ALARM_NAME);
+}
 
-      await sleep(300);
+async function processOneJob() {
+  try {
+    console.log("🔄 Checking backend...");
 
-      const found = await chrome.tabs.sendMessage(tab.id, {
-        type: "CHECK_ORDER",
-        job
-      });
+    const res = await fetch(`${API}/next`);
+    const job = await res.json();
 
-      console.log("📤 Result:", found);
-
-      await fetch(`${API}/result`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          id: job.id,
-          found
-        })
-      });
-
-    } catch (err) {
-      console.error("❌ ERROR:", err);
+    if (!job) {
+      console.log("⏳ No eligible Airtable records right now");
+      return;
     }
 
-    await sleep(2000);
-  }
+    console.log("📦 Job:", job);
 
-  console.log("🛑 LOOP STOPPED");
+    const tabs = await chrome.tabs.query({
+      url: "https://sell.sneakerask.com/products*"
+    });
+
+    if (!tabs.length) {
+      console.log("❌ SneakerAsk sourcing tab not open");
+      return;
+    }
+
+    const tab = tabs[0];
+
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["content.js"]
+    });
+
+    await sleep(500);
+
+    const found = await chrome.tabs.sendMessage(tab.id, {
+      type: "CHECK_ORDER",
+      job
+    });
+
+    console.log("📤 Result:", found);
+
+    await fetch(`${API}/result`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        id: job.id,
+        found
+      })
+    });
+
+  } catch (err) {
+    console.error("❌ Poll error:", err);
+  }
 }
 
 function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
