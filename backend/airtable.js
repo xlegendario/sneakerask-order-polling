@@ -19,7 +19,11 @@ async function getNextOrder() {
       view: "All Orders (Open Only SneakerAsk)",
       filterByFormula: `AND(
         {Fulfillment Status} = "Outsource",
-        FIND("SneakerAsk", ARRAYJOIN({Store Name})) > 0
+        FIND("SneakerAsk", ARRAYJOIN({Store Name})) > 0,
+        OR(
+          {LastSneakeraskPoll} = BLANK(),
+          DATETIME_DIFF(NOW(), {LastSneakeraskPoll}, 'minutes') > 10
+        )
       )`,
       maxRecords: 1
     }
@@ -46,4 +50,12 @@ async function markStoreFulfilled(id) {
   });
 }
 
-module.exports = { getNextOrder, markStoreFulfilled };
+async function markPolled(id) {
+  await api.patch(`/${id}`, {
+    fields: {
+      "LastSneakeraskPoll": new Date().toISOString()
+    }
+  });
+}
+
+module.exports = { getNextOrder, markStoreFulfilled, markPolled };
