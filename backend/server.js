@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const { getNextOrder, markStoreFulfilled } = require("./airtable");
+const { getNextOrder, markStoreFulfilled, markPolled } = require("./airtable");
 
 const app = express();
 app.use(cors());
@@ -27,12 +27,15 @@ app.post("/result", async (req, res) => {
   const { id, found } = req.body;
 
   try {
-    if (!found && id) {
+    if (!found) {
       console.log("❌ Not found → updating Airtable:", id);
       await markStoreFulfilled(id);
     } else {
       console.log("✅ Found → skip");
     }
+    
+    // 🔥 ALWAYS mark as polled
+    await markPolled(id);
 
     res.sendStatus(200);
   } catch (err) {
