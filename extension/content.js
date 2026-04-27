@@ -18,7 +18,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 async function processJob(job) {
   const { orderNumber, sku, size } = job;
 
-  console.log("➡️ Processing:", orderNumber, sku, size);
+  console.log("➡️ Processing:", orderNumber);
 
   const input = document.querySelector("input[placeholder*='Search']");
 
@@ -27,16 +27,33 @@ async function processJob(job) {
     return false;
   }
 
+  // 🔥 STEP 1: CLEAR previous search
+  input.value = "";
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+
+  // Extra nudge for React
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
+
+  await sleep(1000);
+
+  // 🔥 STEP 2: TYPE new order number
   input.value = orderNumber;
   input.dispatchEvent(new Event("input", { bubbles: true }));
 
-  await sleep(2000);
+  console.log("⌨️ Typed:", orderNumber);
 
-  if (document.body.innerText.includes("No Products Found")) {
+  // 🔥 STEP 3: WAIT for results
+  await waitForResults(orderNumber);
+
+  const pageText = document.body.innerText;
+
+  // 🔥 STEP 4: Check "no products"
+  if (pageText.includes("No Products Found")) {
     console.log("❌ No products");
     return false;
   }
 
+  // 🔥 STEP 5: Check rows
   const rows = document.querySelectorAll("tr");
 
   for (let row of rows) {
@@ -53,6 +70,21 @@ async function processJob(job) {
 
   console.log("❌ No match");
   return false;
+}
+
+async function waitForResults(orderNumber) {
+  for (let i = 0; i < 15; i++) {
+    const text = document.body.innerText;
+
+    if (
+      text.includes("No Products Found") ||
+      text.includes(orderNumber)
+    ) {
+      return;
+    }
+
+    await sleep(500);
+  }
 }
 
 function normalize(str) {
