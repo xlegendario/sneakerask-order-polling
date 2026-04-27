@@ -1,24 +1,25 @@
-// Prevent double load
-if (window.__BOT_LOADED__) {
-  console.log("⚠️ Already injected");
-} else {
-  window.__BOT_LOADED__ = true;
-  console.log("🔥 CONTENT SCRIPT ACTIVE");
+if (!window.__SNEAKERASK_BOT_LOADED__) {
+  window.__SNEAKERASK_BOT_LOADED__ = true;
+
+  console.log("🔥 SneakerAsk content script active");
+
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type === "CHECK_ORDER") {
+      processJob(msg.job).then(sendResponse);
+      return true;
+    }
+  });
 }
-
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  console.log("📩 Message received:", msg);
-
-  if (msg.type === "CHECK_ORDER") {
-    processJob(msg.job).then(sendResponse);
-    return true;
-  }
-});
 
 async function processJob(job) {
   const { orderNumber, sku, size } = job;
 
-  console.log("➡️ Processing:", orderNumber);
+  console.log("➡️ Processing:", orderNumber, sku, size);
+
+  if (window.location.href !== "https://sell.sneakerask.com/products?status=sourcing") {
+    console.log("❌ Wrong page:", window.location.href);
+    return false;
+  }
 
   const input = document.querySelector("input[placeholder*='Search']");
 
@@ -27,70 +28,56 @@ async function processJob(job) {
     return false;
   }
 
-  // 🔥 STEP 1: CLEAR previous search
-  input.value = "";
+  setReactInputValue(input, "");
   input.dispatchEvent(new Event("input", { bubbles: true }));
-
-  // Extra nudge for React
-  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
-
   await sleep(1000);
 
-  // 🔥 STEP 2: TYPE new order number
-  input.value = orderNumber;
+  setReactInputValue(input, String(orderNumber));
   input.dispatchEvent(new Event("input", { bubbles: true }));
 
   console.log("⌨️ Typed:", orderNumber);
 
-  // 🔥 STEP 3: WAIT for results
-  await waitForResults(orderNumber);
+  await sleep(2500);
 
-  const pageText = document.body.innerText;
-
-  // 🔥 STEP 4: Check "no products"
-  if (pageText.includes("No Products Found")) {
-    console.log("❌ No products");
+  if (document.body.innerText.includes("No Products Found")) {
+    console.log("❌ No products found");
     return false;
   }
 
-  // 🔥 STEP 5: Check rows
-  const rows = document.querySelectorAll("tr");
+  const pageText = normalize(document.body.innerText);
 
-  for (let row of rows) {
-    const text = normalize(row.innerText);
-
-    if (
-      text.includes(normalize(sku)) &&
-      text.includes(normalize(size))
-    ) {
-      console.log("✅ MATCH FOUND");
-      return true;
-    }
+  if (
+    pageText.includes(normalize(sku)) &&
+    pageText.includes(normalizeSize(size))
+  ) {
+    console.log("✅ SKU + size found");
+    return true;
   }
 
-  console.log("❌ No match");
+  console.log("❌ SKU + size not found");
   return false;
 }
 
-async function waitForResults(orderNumber) {
-  for (let i = 0; i < 15; i++) {
-    const text = document.body.innerText;
+function setReactInputValue(input, value) {
+  const setter = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype,
+    "value"
+  ).set;
 
-    if (
-      text.includes("No Products Found") ||
-      text.includes(orderNumber)
-    ) {
-      return;
-    }
-
-    await sleep(500);
-  }
+  setter.call(input, value);
 }
 
 function normalize(str) {
-  return str.replace(/\s+/g, "").toLowerCase();
+  return String(str || "")
+    .replace(/\s+/g, "")
+    .replace(/-/g, "")
+    .toLowerCase();
+}
+
+function normalizeSize(size) {
+  return normalize(size).replace("eu", "");
 }
 
 function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
