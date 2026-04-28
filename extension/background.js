@@ -1,6 +1,8 @@
 const API = "https://sneakerask-order-polling.onrender.com";
 const ALARM_NAME = "sneakerask_poll_alarm";
 
+let isProcessing = false;
+
 chrome.runtime.onInstalled.addListener(async () => {
   await chrome.storage.local.set({ running: false });
 });
@@ -30,7 +32,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   const data = await chrome.storage.local.get(["running"]);
   if (!data.running) return;
 
-  await processOneJob();
+  await processAllEligibleJobs();
 });
 
 async function startPolling() {
@@ -42,8 +44,7 @@ async function startPolling() {
     periodInMinutes: 1
   });
 
-  // Run immediately once
-  await processOneJob();
+  await processAllEligibleJobs();
 }
 
 async function stopPolling() {
@@ -51,6 +52,37 @@ async function stopPolling() {
 
   await chrome.storage.local.set({ running: false });
   await chrome.alarms.clear(ALARM_NAME);
+}
+
+async function processAllEligibleJobs() {
+  if (isProcessing) {
+    console.log("⚠️ Already processing, skipping");
+    return;
+  }
+
+  isProcessing = true;
+
+  try {
+    while (true) {
+      const data = await chrome.storage.local.get(["running"]);
+
+      if (!data.running) {
+        console.log("🛑 Stopped during batch");
+        break;
+      }
+
+      const didProcess = await processOneJob();
+
+      if (!didProcess) {
+        console.log("✅ No more eligible jobs right now");
+        break;
+      }
+
+      await sleep(1500);
+    }
+  } finally {
+    isProcessing = false;
+  }
 }
 
 async function processOneJob() {
@@ -62,7 +94,7 @@ async function processOneJob() {
 
     if (!job) {
       console.log("⏳ No eligible Airtable records right now");
-      return;
+      return false;
     }
 
     console.log("📦 Job:", job);
@@ -73,7 +105,7 @@ async function processOneJob() {
 
     if (!tabs.length) {
       console.log("❌ SneakerAsk sourcing tab not open");
-      return;
+      return false;
     }
 
     const tab = tabs[0];
@@ -103,8 +135,10 @@ async function processOneJob() {
       })
     });
 
+    return true;
   } catch (err) {
     console.error("❌ Poll error:", err);
+    return false;
   }
 }
 
