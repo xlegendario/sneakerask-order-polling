@@ -78,7 +78,7 @@ async function processAllEligibleJobs() {
         break;
       }
 
-      await sleep(1500);
+      await sleep(750);
     }
   } finally {
     isProcessing = false;
