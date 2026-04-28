@@ -37,7 +37,7 @@ async function processJob(job) {
 
   console.log("⌨️ Typed:", orderNumber);
 
-  await sleep(2500);
+  await sleep(1250);
 
   if (document.body.innerText.includes("No Products Found")) {
     console.log("❌ No products found");
