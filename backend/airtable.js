@@ -4,7 +4,7 @@ const BASE = process.env.AIRTABLE_BASE_ID;
 const TABLE = encodeURIComponent(process.env.AIRTABLE_TABLE);
 const API_KEY = process.env.AIRTABLE_API_KEY;
 
-const COOLDOWN_MINUTES = 10;
+const COOLDOWN_MINUTES = 15;
 
 const api = axios.create({
   baseURL: `https://api.airtable.com/v0/${BASE}/${TABLE}`,
@@ -15,40 +15,60 @@ const api = axios.create({
 });
 
 async function getNextOrder() {
-  const res = await api.get("", {
-    params: {
-      view: "All Orders (Open Only SneakerAsk)",
-      filterByFormula: `AND(
-        {Fulfillment Status} = "Outsource",
-        FIND("SneakerAsk", ARRAYJOIN({Store Name})) > 0
-      )`,
-      maxRecords: 50
-    }
-  });
+  let allRecords = [];
+  let offset;
 
-  const records = res.data.records || [];
+  do {
+    const res = await api.get("", {
+      params: {
+        view: "All Orders (Open Only SneakerAsk)",
+        filterByFormula: `AND(
+          {Fulfillment Status} = "Outsource",
+          FIND("SneakerAsk", ARRAYJOIN({Store Name})) > 0
+        )`,
+        pageSize: 100,
+        ...(offset ? { offset } : {})
+      }
+    });
+
+    allRecords.push(...(res.data.records || []));
+    offset = res.data.offset;
+  } while (offset);
+
   const now = Date.now();
 
-  for (const r of records) {
-    const lastPoll = r.fields["LastSneakeraskPoll"];
+  const eligibleRecords = allRecords
+    .map((record) => {
+      const lastPoll = record.fields["LastSneakeraskPoll"];
 
-    if (!lastPoll) {
-      return formatJob(r);
-    }
+      return {
+        record,
+        lastPollTime: lastPoll ? new Date(lastPoll).getTime() : null
+      };
+    })
+    .filter((item) => {
+      if (!item.lastPollTime) return true;
 
-    const lastPollTime = new Date(lastPoll).getTime();
-    const minutesAgo = (now - lastPollTime) / 1000 / 60;
+      const minutesAgo = (now - item.lastPollTime) / 1000 / 60;
+      return minutesAgo >= COOLDOWN_MINUTES;
+    })
+    .sort((a, b) => {
+      if (!a.lastPollTime && b.lastPollTime) return -1;
+      if (a.lastPollTime && !b.lastPollTime) return 1;
+      if (!a.lastPollTime && !b.lastPollTime) return 0;
 
-    console.log(
-      `⏱️ ${r.fields["Shopify Order Number"]} last polled ${minutesAgo.toFixed(1)} min ago`
-    );
+      return a.lastPollTime - b.lastPollTime;
+    });
 
-    if (minutesAgo >= COOLDOWN_MINUTES) {
-      return formatJob(r);
-    }
+  console.log("📊 Airtable records found:", allRecords.length);
+  console.log("✅ Eligible records:", eligibleRecords.length);
+
+  if (!eligibleRecords.length) {
+    console.log("⏳ No eligible records right now");
+    return null;
   }
 
-  return null;
+  return formatJob(eligibleRecords[0].record);
 }
 
 function formatJob(r) {
