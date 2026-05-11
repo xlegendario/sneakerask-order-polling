@@ -5,6 +5,7 @@ const TABLE = encodeURIComponent(process.env.AIRTABLE_TABLE);
 const API_KEY = process.env.AIRTABLE_API_KEY;
 
 const COOLDOWN_MINUTES = 15;
+const MIN_ORDER_AGE_MINUTES = 30;
 
 const api = axios.create({
   baseURL: `https://api.airtable.com/v0/${BASE}/${TABLE}`,
@@ -47,8 +48,25 @@ async function getNextOrder() {
       };
     })
     .filter((item) => {
+      const orderDate = item.record.fields["Order Date"];
+      const orderTime = orderDate ? new Date(orderDate).getTime() : null;
+    
+      if (!orderTime) {
+        console.log("⚠️ Skipping record without Order Date:", item.record.id);
+        return false;
+      }
+    
+      const orderAgeMinutes = (now - orderTime) / 1000 / 60;
+    
+      if (orderAgeMinutes < MIN_ORDER_AGE_MINUTES) {
+        console.log(
+          `⏳ Too new: ${item.record.fields["Shopify Order Number"]} is ${orderAgeMinutes.toFixed(1)} min old`
+        );
+        return false;
+      }
+    
       if (!item.lastPollTime) return true;
-
+    
       const minutesAgo = (now - item.lastPollTime) / 1000 / 60;
       return minutesAgo >= COOLDOWN_MINUTES;
     })
