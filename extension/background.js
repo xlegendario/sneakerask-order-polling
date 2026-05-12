@@ -99,16 +99,31 @@ async function processOneJob() {
 
     console.log("📦 Job:", job);
 
-    const tabs = await chrome.tabs.query({
+    let tabs = await chrome.tabs.query({
       url: "https://sell.sneakerask.com/products*"
     });
-
+    
+    let tab;
+    
     if (!tabs.length) {
-      console.log("❌ SneakerAsk sourcing tab not open");
-      return false;
+      tab = await chrome.tabs.create({
+        url: "https://sell.sneakerask.com/products?status=sourcing",
+        active: true
+      });
+    
+      await sleep(4000);
+    } else {
+      tab = tabs[0];
+    
+      if (tab.url !== "https://sell.sneakerask.com/products?status=sourcing") {
+        await chrome.tabs.update(tab.id, {
+          url: "https://sell.sneakerask.com/products?status=sourcing",
+          active: true
+        });
+    
+        await sleep(4000);
+      }
     }
-
-    const tab = tabs[0];
 
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
