@@ -12,50 +12,85 @@ if (!window.__SNEAKERASK_BOT_LOADED__) {
 }
 
 async function processJob(job) {
-  const { orderNumber, sku, size } = job;
+  try {
+    const { orderNumber, sku, size } = job;
 
-  console.log("➡️ Processing:", orderNumber, sku, size);
+    console.log("➡️ Processing:", orderNumber, sku, size);
 
-  if (window.location.href !== "https://sell.sneakerask.com/products?status=sourcing") {
-    console.log("❌ Wrong page:", window.location.href);
-    return false;
+    const pageTextBefore = document.body.innerText || "";
+
+    if (hasSneakerAskConnectionError(pageTextBefore)) {
+      console.log("⚠️ SneakerAsk connection error detected before typing");
+      return { status: "CONNECTION_ERROR" };
+    }
+
+    if (window.location.href !== "https://sell.sneakerask.com/products?status=sourcing") {
+      console.log("⚠️ Wrong URL:", window.location.href);
+      return { status: "ERROR", reason: "Wrong URL" };
+    }
+
+    const input = document.querySelector("input[placeholder*='Search']");
+
+    if (!input) {
+      console.log("⚠️ Search input not found");
+      return { status: "ERROR", reason: "Search input not found" };
+    }
+
+    setReactInputValue(input, "");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await sleep(1000);
+
+    setReactInputValue(input, String(orderNumber));
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+
+    console.log("⌨️ Typed:", orderNumber);
+
+    await sleep(1500);
+
+    const pageTextAfter = document.body.innerText || "";
+
+    if (hasSneakerAskConnectionError(pageTextAfter)) {
+      console.log("⚠️ SneakerAsk connection error detected after typing");
+      return { status: "CONNECTION_ERROR" };
+    }
+
+    const currentValue = String(input.value || "").trim();
+
+    if (currentValue !== String(orderNumber)) {
+      console.log("⚠️ Order number not typed correctly:", currentValue);
+      return { status: "ERROR", reason: "Order number not typed correctly" };
+    }
+
+    if (pageTextAfter.includes("No Products Found")) {
+      console.log("❌ Confirmed no products found");
+      return { status: "NOT_FOUND" };
+    }
+
+    const normalizedPageText = normalize(pageTextAfter);
+
+    if (
+      normalizedPageText.includes(normalize(sku)) &&
+      normalizedPageText.includes(normalizeSize(size))
+    ) {
+      console.log("✅ SKU + size found");
+      return { status: "FOUND" };
+    }
+
+    console.log("❌ Products found, but SKU + size not found");
+    return { status: "NOT_FOUND" };
+
+  } catch (err) {
+    console.error("⚠️ Content script error:", err);
+    return { status: "ERROR", reason: err.message || "Unknown error" };
   }
+}
 
-  const input = document.querySelector("input[placeholder*='Search']");
-
-  if (!input) {
-    console.log("❌ Search input not found");
-    return false;
-  }
-
-  setReactInputValue(input, "");
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  await sleep(1000);
-
-  setReactInputValue(input, String(orderNumber));
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-
-  console.log("⌨️ Typed:", orderNumber);
-
-  await sleep(1250);
-
-  if (document.body.innerText.includes("No Products Found")) {
-    console.log("❌ No products found");
-    return false;
-  }
-
-  const pageText = normalize(document.body.innerText);
-
-  if (
-    pageText.includes(normalize(sku)) &&
-    pageText.includes(normalizeSize(size))
-  ) {
-    console.log("✅ SKU + size found");
-    return true;
-  }
-
-  console.log("❌ SKU + size not found");
-  return false;
+function hasSneakerAskConnectionError(text) {
+  return (
+    text.includes("Connection Error") ||
+    text.includes("Something went wrong") ||
+    text.includes("Please check your connection and try again")
+  );
 }
 
 function setReactInputValue(input, value) {
