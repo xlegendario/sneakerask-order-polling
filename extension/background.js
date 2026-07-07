@@ -1,5 +1,6 @@
 const API = "https://sneakerask-order-polling.onrender.com";
 const ALARM_NAME = "sneakerask_poll_alarm";
+const SOURCING_URL = "https://sell.sneakerask.com/products?status=sourcing";
 
 let isProcessing = false;
 
@@ -74,7 +75,7 @@ async function processAllEligibleJobs() {
       const didProcess = await processOneJob();
 
       if (!didProcess) {
-        console.log("✅ No more eligible jobs right now");
+        console.log("✅ Batch stopped / no more eligible jobs right now");
         break;
       }
 
@@ -99,31 +100,7 @@ async function processOneJob() {
 
     console.log("📦 Job:", job);
 
-    let tabs = await chrome.tabs.query({
-      url: "https://sell.sneakerask.com/products*"
-    });
-    
-    let tab;
-    
-    if (!tabs.length) {
-      tab = await chrome.tabs.create({
-        url: "https://sell.sneakerask.com/products?status=sourcing",
-        active: true
-      });
-    
-      await sleep(4000);
-    } else {
-      tab = tabs[0];
-    
-      if (tab.url !== "https://sell.sneakerask.com/products?status=sourcing") {
-        await chrome.tabs.update(tab.id, {
-          url: "https://sell.sneakerask.com/products?status=sourcing",
-          active: true
-        });
-    
-        await sleep(4000);
-      }
-    }
+    const tab = await getOrOpenSourcingTab();
 
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -132,12 +109,25 @@ async function processOneJob() {
 
     await sleep(500);
 
-    const found = await chrome.tabs.sendMessage(tab.id, {
+    const result = await chrome.tabs.sendMessage(tab.id, {
       type: "CHECK_ORDER",
       job
     });
 
-    console.log("📤 Result:", found);
+    console.log("📤 Result:", result);
+
+    if (!result || result.status === "ERROR" || result.status === "CONNECTION_ERROR") {
+      console.log("⚠️ Browser/SneakerAsk error. NOT sending result to backend:", result);
+
+      await recoverSourcingTab(tab.id);
+
+      return false;
+    }
+
+    if (result.status !== "FOUND" && result.status !== "NOT_FOUND") {
+      console.log("⚠️ Unknown result. NOT sending result to backend:", result);
+      return false;
+    }
 
     await fetch(`${API}/result`, {
       method: "POST",
@@ -146,15 +136,60 @@ async function processOneJob() {
       },
       body: JSON.stringify({
         id: job.id,
-        found
+        result
       })
     });
 
     return true;
+
   } catch (err) {
     console.error("❌ Poll error:", err);
     return false;
   }
+}
+
+async function getOrOpenSourcingTab() {
+  let tabs = await chrome.tabs.query({
+    url: "https://sell.sneakerask.com/products*"
+  });
+
+  let tab;
+
+  if (!tabs.length) {
+    tab = await chrome.tabs.create({
+      url: SOURCING_URL,
+      active: true
+    });
+
+    await sleep(5000);
+    return tab;
+  }
+
+  tab = tabs[0];
+
+  if (tab.url !== SOURCING_URL) {
+    await chrome.tabs.update(tab.id, {
+      url: SOURCING_URL,
+      active: true
+    });
+
+    await sleep(5000);
+  }
+
+  return tab;
+}
+
+async function recoverSourcingTab(tabId) {
+  console.log("🔄 Recovering SneakerAsk tab...");
+
+  await chrome.tabs.update(tabId, {
+    url: SOURCING_URL,
+    active: true
+  });
+
+  await sleep(8000);
+
+  console.log("⏸️ Recovery done. Waiting for next alarm tick.");
 }
 
 function sleep(ms) {
