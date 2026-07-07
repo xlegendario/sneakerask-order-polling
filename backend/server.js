@@ -24,20 +24,30 @@ app.get("/next", async (req, res) => {
 
 // Receive result
 app.post("/result", async (req, res) => {
-  const { id, found } = req.body;
+  const { id, result } = req.body;
 
   try {
-    if (!found) {
-      console.log("❌ Not found → updating Airtable:", id);
-      await markStoreFulfilled(id);
-    } else {
-      console.log("✅ Found → skip");
+    if (!id || !result || !result.status) {
+      console.log("⚠️ Invalid result payload. NOT updating Airtable:", req.body);
+      return res.sendStatus(200);
     }
-    
-    // 🔥 ALWAYS mark as polled
-    await markPolled(id);
 
-    res.sendStatus(200);
+    if (result.status === "FOUND") {
+      console.log("✅ Found → keep Outsource:", id);
+      await markPolled(id);
+      return res.sendStatus(200);
+    }
+
+    if (result.status === "NOT_FOUND") {
+      console.log("❌ Confirmed NOT_FOUND → Store Fulfilled:", id);
+      await markStoreFulfilled(id);
+      await markPolled(id);
+      return res.sendStatus(200);
+    }
+
+    console.log("⚠️ Error result. NOT updating Airtable:", id, result);
+    return res.sendStatus(200);
+
   } catch (err) {
     console.error("POST /result error:", err.message);
     res.status(500).send("error");
