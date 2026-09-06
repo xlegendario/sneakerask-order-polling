@@ -123,9 +123,25 @@ async function getAllRecords() {
     const res = await api.get("", {
       params: {
         view: VIEW_NAME,
+        /*
+          Alleen orders die WIJ voor SneakerAsk moeten vullen.
+
+          {Marketplace} = "" is de hele toevoeging, en die is niet cosmetisch.
+          Sinds de consignment-flow bestaat draagt SneakerAsk twee petten: de
+          winkel waarvoor wij inkopen, en de marktplaats waaraan wij verkopen.
+          Beide soorten orders hebben Store Name "SneakerAsk" en komen op
+          Outsource terecht.
+
+          Een consignment-order staat per definitie niet op hun sourcing-pagina
+          - het is onze verkoop aan hen, niet hun vraag aan ons. Die kwam hier
+          dus altijd terug als NOT_FOUND en werd op Store Fulfilled gezet.
+          Twee orders zijn daar op 6 september door geraakt, en bij allebei had
+          de koper al betaald terwijl er geen paar tegenover stond.
+        */
         filterByFormula: `AND(
           {Fulfillment Status} = "Outsource",
-          FIND("SneakerAsk", ARRAYJOIN({Store Name})) > 0
+          FIND("SneakerAsk", ARRAYJOIN({Store Name})) > 0,
+          {Marketplace} = ""
         )`,
         pageSize: 100,
         ...(offset ? { offset } : {})
