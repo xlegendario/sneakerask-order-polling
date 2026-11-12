@@ -1,3 +1,5 @@
+import { ensureLoggedIn } from "./login.js";
+
 const API = "https://sneakerask-order-polling.onrender.com";
 const ALARM_NAME = "sneakerask_poll_alarm";
 const SOURCING_URL = "https://sell.sneakerask.com/products?status=sourcing";
@@ -102,6 +104,15 @@ async function processOneJob() {
 
     const tab = await getOrOpenSourcingTab();
 
+    // SneakerAsk signs the seller out every so often and the tab lands on
+    // /home. Sign back in first; without that every job fails as "Wrong URL".
+    const signedIn = await ensureLoggedIn(tab.id, SOURCING_URL);
+
+    if (!signedIn) {
+      console.log("⚠️ Not signed in to SneakerAsk. Job left for the next tick.");
+      return false;
+    }
+
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ["content.js"]
@@ -149,8 +160,10 @@ async function processOneJob() {
 }
 
 async function getOrOpenSourcingTab() {
+  // Any SneakerAsk tab, not only /products: after a sign-out the tab sits on
+  // /home or /signin, and matching /products only opened a new tab every tick.
   let tabs = await chrome.tabs.query({
-    url: "https://sell.sneakerask.com/products*"
+    url: "https://sell.sneakerask.com/*"
   });
 
   let tab;
